@@ -302,7 +302,7 @@ public class MainVaultFrame extends JFrame {
     // ==========================================
     // MODULE 3: SETTINGS
     // ==========================================
-    //ANMOL 'S
+    
     private JPanel createSettingsPanel() {
         JPanel panel = new JPanel(new GridBagLayout());
         JButton resetBtn = new JButton("⚠️ Reset Master & Panic Passwords");
