@@ -47,7 +47,132 @@ public class MainVaultFrame extends JFrame {
     // ==========================================
     // MODULE 1: THE PASSWORD MANAGER
     // ==========================================
-    // ANANYA 's
+    private JPanel createPasswordPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+        
+        String[] columns = {"Website/App", "Username", "Password"};
+        tableModel = new DefaultTableModel(columns, 0);
+        passwordTable = new JTable(tableModel);
+        panel.add(new JScrollPane(passwordTable), BorderLayout.CENTER);
+
+        JPanel buttonPanel = new JPanel();
+        JButton addBtn = new JButton("+ Add");
+        JButton editBtn = new JButton("✏️ Edit");
+        JButton deleteBtn = new JButton("🗑️ Delete");
+        
+        buttonPanel.add(addBtn);
+        buttonPanel.add(editBtn);
+        buttonPanel.add(deleteBtn);
+        panel.add(buttonPanel, BorderLayout.SOUTH);
+
+        addBtn.addActionListener(e -> showAddPasswordDialog());
+        editBtn.addActionListener(e -> showEditPasswordDialog());
+        deleteBtn.addActionListener(e -> deleteSelectedPassword());
+
+        return panel;
+    }
+
+    private void loadPasswords() {
+        tableModel.setRowCount(0); 
+        try {
+            Connection conn = DatabaseConnection.getConnection();
+            PreparedStatement pstmt = conn.prepareStatement("SELECT website, username, password FROM passwords WHERE is_decoy = ?");
+            pstmt.setBoolean(1, isPanicMode);
+            ResultSet rs = pstmt.executeQuery();
+
+            while (rs.next()) {
+                Vector<String> row = new Vector<>();
+                row.add(rs.getString("website"));
+                row.add(rs.getString("username"));
+                row.add(rs.getString("password"));
+                tableModel.addRow(row);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void showAddPasswordDialog() {
+        JTextField siteField = new JTextField();
+        JTextField userField = new JTextField();
+        JPasswordField passField = new JPasswordField();
+        Object[] message = {"Website:", siteField, "Username:", userField, "Password:", passField};
+
+        if (JOptionPane.showConfirmDialog(this, message, "Add Credential", JOptionPane.OK_CANCEL_OPTION) == JOptionPane.OK_OPTION) {
+            try {
+                Connection conn = DatabaseConnection.getConnection();
+                PreparedStatement pstmt = conn.prepareStatement("INSERT INTO passwords (website, username, password, is_decoy) VALUES (?, ?, ?, ?)");
+                pstmt.setString(1, siteField.getText());
+                pstmt.setString(2, userField.getText());
+                pstmt.setString(3, new String(passField.getPassword()));
+                pstmt.setBoolean(4, isPanicMode); 
+                pstmt.executeUpdate();
+                loadPasswords(); 
+            } catch (SQLException e) {
+                JOptionPane.showMessageDialog(this, "Error: " + e.getMessage());
+            }
+        }
+    }
+
+    private void showEditPasswordDialog() {
+        int selectedRow = passwordTable.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(this, "Please select a password to edit!");
+            return;
+        }
+
+        String oldSite = tableModel.getValueAt(selectedRow, 0).toString();
+        String oldUser = tableModel.getValueAt(selectedRow, 1).toString();
+        String oldPass = tableModel.getValueAt(selectedRow, 2).toString();
+
+        JTextField siteField = new JTextField(oldSite);
+        JTextField userField = new JTextField(oldUser);
+        JTextField passField = new JTextField(oldPass); 
+
+        Object[] message = {"Website:", siteField, "Username:", userField, "Password:", passField};
+
+        if (JOptionPane.showConfirmDialog(this, message, "Edit Credential", JOptionPane.OK_CANCEL_OPTION) == JOptionPane.OK_OPTION) {
+            try {
+                Connection conn = DatabaseConnection.getConnection();
+                PreparedStatement pstmt = conn.prepareStatement("UPDATE passwords SET website=?, username=?, password=? WHERE website=? AND username=? AND is_decoy=?");
+                pstmt.setString(1, siteField.getText());
+                pstmt.setString(2, userField.getText());
+                pstmt.setString(3, passField.getText());
+                pstmt.setString(4, oldSite);
+                pstmt.setString(5, oldUser);
+                pstmt.setBoolean(6, isPanicMode);
+                pstmt.executeUpdate();
+                loadPasswords(); 
+            } catch (SQLException e) {
+                JOptionPane.showMessageDialog(this, "Error: " + e.getMessage());
+            }
+        }
+    }
+
+    private void deleteSelectedPassword() {
+        int selectedRow = passwordTable.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(this, "Please select a password to delete!");
+            return;
+        }
+
+        String site = tableModel.getValueAt(selectedRow, 0).toString();
+        String user = tableModel.getValueAt(selectedRow, 1).toString();
+
+        if (JOptionPane.showConfirmDialog(this, "Delete " + site + "?", "Confirm", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
+            try {
+                Connection conn = DatabaseConnection.getConnection();
+                PreparedStatement pstmt = conn.prepareStatement("DELETE FROM passwords WHERE website=? AND username=? AND is_decoy=?");
+                pstmt.setString(1, site);
+                pstmt.setString(2, user);
+                pstmt.setBoolean(3, isPanicMode);
+                pstmt.executeUpdate();
+                loadPasswords();
+            } catch (SQLException e) {
+                JOptionPane.showMessageDialog(this, "Error: " + e.getMessage());
+            }
+        }
+    }
    
 
     // ==========================================
