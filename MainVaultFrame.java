@@ -1,16 +1,16 @@
 package com.vault.ui;
 
-import com.vault.db.DatabaseConnection;
 import com.vault.core.CryptoUtil;
-import javax.swing.*;
-import javax.swing.table.DefaultTableModel;
+import com.vault.db.DatabaseConnection;
 import java.awt.*;
 import java.io.*;
+import java.security.Key;
 import java.sql.*;
 import java.util.Vector;
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
-import java.security.Key;
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
 
 public class MainVaultFrame extends JFrame {
     private boolean isPanicMode;
@@ -19,12 +19,14 @@ public class MainVaultFrame extends JFrame {
     
     private DefaultTableModel fileTableModel;
     private JTable fileTable;
+    
+    private JLabel executionTimeLabel;
 
     public MainVaultFrame(boolean isPanicMode) {
         this.isPanicMode = isPanicMode;
 
         setTitle("SecureVault - Dashboard " + (isPanicMode ? "[DECOY MODE]" : "[SECURE]"));
-        setSize(800, 600);
+        setSize(850, 600); // Made slightly wider to fit the new text
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
@@ -173,7 +175,7 @@ public class MainVaultFrame extends JFrame {
     }
 
     // ==========================================
-    // MODULE 2: THE FILE LOCKER (NIO ATOMIC FIX)
+    // MODULE 2: THE FILE LOCKER (FULL METRICS UPGRADE)
     // ==========================================
     private JPanel createFilePanel() {
         JPanel panel = new JPanel(new BorderLayout());
@@ -183,13 +185,23 @@ public class MainVaultFrame extends JFrame {
         fileTable = new JTable(fileTableModel);
         panel.add(new JScrollPane(fileTable), BorderLayout.CENTER);
 
+        JPanel bottomContainer = new JPanel(new GridLayout(2, 1));
         JPanel buttonPanel = new JPanel();
+        
         JButton importBtn = new JButton("➕ Import & Lock New File");
         JButton toggleBtn = new JButton("🔄 Toggle Lock / Unlock");
 
         buttonPanel.add(importBtn);
         buttonPanel.add(toggleBtn);
-        panel.add(buttonPanel, BorderLayout.SOUTH);
+        
+        executionTimeLabel = new JLabel("⏱️ Metrics: Ready for Processing", SwingConstants.CENTER);
+        executionTimeLabel.setFont(new Font("Consolas", Font.BOLD, 14)); 
+        executionTimeLabel.setForeground(new Color(0, 102, 204)); 
+        executionTimeLabel.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
+
+        bottomContainer.add(buttonPanel);
+        bottomContainer.add(executionTimeLabel);
+        panel.add(bottomContainer, BorderLayout.SOUTH);
 
         importBtn.addActionListener(e -> {
             JFileChooser chooser = new JFileChooser();
@@ -231,6 +243,9 @@ public class MainVaultFrame extends JFrame {
     private void processFile(boolean encrypting, File inputFile) {
         if (inputFile == null || !inputFile.exists()) return;
 
+        // STOPWATCH 1 START: Measure the entire Response Time (including UI overhead)
+        long responseStartTime = System.currentTimeMillis();
+
         String newName = encrypting ? inputFile.getName() + ".locked" : inputFile.getName().replace(".locked", "");
         File outputFile = new File("VaultFiles/" + newName);
 
@@ -240,15 +255,42 @@ public class MainVaultFrame extends JFrame {
             Cipher cipher = Cipher.getInstance("AES");
             cipher.init(encrypting ? Cipher.ENCRYPT_MODE : Cipher.DECRYPT_MODE, secretKey);
 
-            // The OneDrive Fix: We load the whole file instantly instead of using breakable streams
+            // STOPWATCH 2 START: Measure ONLY the AES Execution math
+            long execStartTime = System.currentTimeMillis();
+
             byte[] inputBytes = java.nio.file.Files.readAllBytes(inputFile.toPath());
             byte[] outputBytes = cipher.doFinal(inputBytes);
             java.nio.file.Files.write(outputFile.toPath(), outputBytes);
 
-            inputFile.delete(); 
+            // STOPWATCH 2 END
+            long execEndTime = System.currentTimeMillis();
+            long execDuration = execEndTime - execStartTime;
 
-            JOptionPane.showMessageDialog(this, "File successfully " + (encrypting ? "Locked" : "Unlocked") + "!");
+            // Delete the old file and refresh the UI Table
+            inputFile.delete(); 
             loadFileTable(); 
+
+            // STOPWATCH 1 END: Stop response time BEFORE the popup window halts the code
+            long responseEndTime = System.currentTimeMillis();
+            long responseDuration = responseEndTime - responseStartTime;
+
+            // ==========================================
+            // MATH: Calculate Size and Throughput
+            // ==========================================
+            double fileSizeMB = outputFile.length() / (1024.0 * 1024.0);
+            double execSeconds = execDuration / 1000.0;
+            double throughput = (execSeconds > 0.001) ? (fileSizeMB / execSeconds) : 0.0;
+
+            // Update the UI Label dynamically
+            String action = encrypting ? "Encrypted" : "Decrypted";
+            String metricsText = String.format("⏱️ %s | Exec: %d ms | Response: %d ms | Throughput: %.2f MB/s", 
+                                                action, execDuration, responseDuration, throughput);
+            executionTimeLabel.setText(metricsText);
+
+            // Show popup with full report
+            String reportMessage = String.format("File %s Successfully!\n\nFile Size: %.2f MB\nExecution Time: %d ms\nResponse Time: %d ms\nThroughput: %.2f MB/s", 
+                                                 action, fileSizeMB, execDuration, responseDuration, throughput);
+            JOptionPane.showMessageDialog(this, reportMessage, "Operation Complete", JOptionPane.INFORMATION_MESSAGE);
             
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this, "File Error: " + ex.getMessage());
