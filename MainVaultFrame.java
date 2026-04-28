@@ -21,16 +21,23 @@ public class MainVaultFrame extends JFrame {
     private JTable fileTable;
     
     private JLabel executionTimeLabel;
+    
+    // NEW: Variable to dynamically store which folder this session should use
+    private String vaultFolder;
 
     public MainVaultFrame(boolean isPanicMode) {
         this.isPanicMode = isPanicMode;
 
-        setTitle("SecureVault - Dashboard " + (isPanicMode ? "[DECOY MODE]" : "[SECURE]"));
-        setSize(850, 600); // Made slightly wider to fit the new text
+        // NEW: If in Panic Mode, use a completely different folder so files are separated!
+        this.vaultFolder = isPanicMode ? "VaultFiles_Decoy" : "VaultFiles";
+
+        setTitle("Aegis Security Suite " + (isPanicMode ? "[DECOY MODE]" : "[SECURE]"));
+        setSize(850, 600); 
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
-        new File("VaultFiles").mkdir(); 
+        // Creates the correct folder based on the login mode
+        new File(vaultFolder).mkdir(); 
 
         JTabbedPane tabbedPane = new JTabbedPane();
         tabbedPane.addTab("🔑 Passwords", createPasswordPanel());
@@ -173,10 +180,9 @@ public class MainVaultFrame extends JFrame {
             }
         }
     }
-   
 
     // ==========================================
-    // MODULE 2: THE FILE LOCKER (FULL METRICS UPGRADE)
+    // MODULE 2: THE FILE LOCKER
     // ==========================================
     private JPanel createFilePanel() {
         JPanel panel = new JPanel(new BorderLayout());
@@ -215,7 +221,8 @@ public class MainVaultFrame extends JFrame {
             int selectedRow = fileTable.getSelectedRow();
             if (selectedRow != -1) {
                 String fileName = fileTableModel.getValueAt(selectedRow, 0).toString();
-                File fileToProcess = new File("VaultFiles/" + fileName);
+                // FIX: Look for the file in the correct dynamic folder
+                File fileToProcess = new File(vaultFolder + "/" + fileName);
                 boolean isCurrentlyLocked = fileName.endsWith(".locked");
                 processFile(!isCurrentlyLocked, fileToProcess); 
             } else {
@@ -229,7 +236,8 @@ public class MainVaultFrame extends JFrame {
 
     private void loadFileTable() {
         fileTableModel.setRowCount(0);
-        File folder = new File("VaultFiles");
+        // FIX: Load files from the correct dynamic folder
+        File folder = new File(vaultFolder);
         File[] listOfFiles = folder.listFiles();
         if (listOfFiles != null) {
             for (File file : listOfFiles) {
@@ -244,11 +252,11 @@ public class MainVaultFrame extends JFrame {
     private void processFile(boolean encrypting, File inputFile) {
         if (inputFile == null || !inputFile.exists()) return;
 
-        // STOPWATCH 1 START: Measure the entire Response Time (including UI overhead)
         long responseStartTime = System.currentTimeMillis();
 
         String newName = encrypting ? inputFile.getName() + ".locked" : inputFile.getName().replace(".locked", "");
-        File outputFile = new File("VaultFiles/" + newName);
+        // FIX: Save the new file to the correct dynamic folder
+        File outputFile = new File(vaultFolder + "/" + newName);
 
         try {
             String keyString = "SecureVaultKey12"; 
@@ -256,39 +264,30 @@ public class MainVaultFrame extends JFrame {
             Cipher cipher = Cipher.getInstance("AES");
             cipher.init(encrypting ? Cipher.ENCRYPT_MODE : Cipher.DECRYPT_MODE, secretKey);
 
-            // STOPWATCH 2 START: Measure ONLY the AES Execution math
             long execStartTime = System.currentTimeMillis();
 
             byte[] inputBytes = java.nio.file.Files.readAllBytes(inputFile.toPath());
             byte[] outputBytes = cipher.doFinal(inputBytes);
             java.nio.file.Files.write(outputFile.toPath(), outputBytes);
 
-            // STOPWATCH 2 END
             long execEndTime = System.currentTimeMillis();
             long execDuration = execEndTime - execStartTime;
 
-            // Delete the old file and refresh the UI Table
             inputFile.delete(); 
             loadFileTable(); 
 
-            // STOPWATCH 1 END: Stop response time BEFORE the popup window halts the code
             long responseEndTime = System.currentTimeMillis();
             long responseDuration = responseEndTime - responseStartTime;
 
-            // ==========================================
-            // MATH: Calculate Size and Throughput
-            // ==========================================
             double fileSizeMB = outputFile.length() / (1024.0 * 1024.0);
             double execSeconds = execDuration / 1000.0;
             double throughput = (execSeconds > 0.001) ? (fileSizeMB / execSeconds) : 0.0;
 
-            // Update the UI Label dynamically
             String action = encrypting ? "Encrypted" : "Decrypted";
             String metricsText = String.format("⏱️ %s | Exec: %d ms | Response: %d ms | Throughput: %.2f MB/s", 
                                                 action, execDuration, responseDuration, throughput);
             executionTimeLabel.setText(metricsText);
 
-            // Show popup with full report
             String reportMessage = String.format("File %s Successfully!\n\nFile Size: %.2f MB\nExecution Time: %d ms\nResponse Time: %d ms\nThroughput: %.2f MB/s", 
                                                  action, fileSizeMB, execDuration, responseDuration, throughput);
             JOptionPane.showMessageDialog(this, reportMessage, "Operation Complete", JOptionPane.INFORMATION_MESSAGE);
@@ -302,7 +301,6 @@ public class MainVaultFrame extends JFrame {
     // ==========================================
     // MODULE 3: SETTINGS
     // ==========================================
-    
     private JPanel createSettingsPanel() {
         JPanel panel = new JPanel(new GridBagLayout());
         JButton resetBtn = new JButton("⚠️ Reset Master & Panic Passwords");
